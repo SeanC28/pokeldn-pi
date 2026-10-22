@@ -43,8 +43,9 @@ the driver's kernel version, the keys and the system tools, and runs the offline
 checks. It does not build Nexmon or the driver.
 
 Scarlet/Violet hosts its search session for only 3 to 4 s. If the Pi's join
-lands after that, the console hands over the host role and starts searching
-again, and the Pi rescans and rejoins for up to `POKEPI_RETRY_SECONDS` (150).
+lands after that, the console hands over the host role (or stops answering
+authentication or association) and starts searching again, and the Pi rescans
+and rejoins for up to `POKEPI_RETRY_SECONDS` (150).
 
 Tested OS: Raspberry Pi OS Bookworm Lite 64-bit, kernel
 `6.12.109+rpt-rpi-v8`; Nexmon BCM43455c0 firmware `7_45_206`; Python 3.13.16,

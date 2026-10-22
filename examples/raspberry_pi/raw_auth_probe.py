@@ -88,7 +88,7 @@ async def associate(monitor, target, source, radiotap, keys=None, station_rates=
                         from raw_ldn import authenticate
                         await authenticate(monitor, target, source, radiotap, keys)
                     return
-        raise RuntimeError('No matching association response')
+        raise NoHost('No matching association response')
     finally:
         # Release only our own probe identity at the selected host.
         frame = wlan.DeauthenticationFrame(target=target.address, source=source,
@@ -98,7 +98,10 @@ async def associate(monitor, target, source, radiotap, keys=None, station_rates=
         print('Probe identity disconnect submitted; delivery unconfirmed', flush=True)
 
 class NoHost(RuntimeError):
-    """No usable matching host right now; the console may still be browsing."""
+    """No usable matching host right now; the console may still be browsing.
+
+    Also raised when the host stops answering authentication or association: its
+    3 to 4 s member wait can end between those frames, taking the network with it."""
 
 async def run(args):
     pi_backend.use()
@@ -195,7 +198,7 @@ async def join_once(args, phy, keys, skip, scan_until):
                                 await associate(monitor, target, source, radiotap,
                                                 keys if args.ldn_auth else None, args.station_rates)
                             return
-            raise RuntimeError('No matching authentication response; transmission or response reception remains unverified')
+            raise NoHost('No matching authentication response; transmission or response reception remains unverified')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
