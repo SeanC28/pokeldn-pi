@@ -1,6 +1,7 @@
 """Adapt upstream Z-A GameStreams to the asynchronous Pi radio transport."""
 from pi_paths import DATA_ROOT
 import time
+import os
 from collections import deque
 from pathlib import Path
 import za_join as upstream
@@ -21,12 +22,12 @@ class GameBridge:
         args = upstream.build_parser().parse_args([])
         args.game_dir = str(Path(upstream.za.reference.__file__).parent / 'data')
         args.trade_offer = [str(Path(offer).resolve())]
-        args.trainer_name = 'PI-TEST'
+        args.trainer_name = os.environ.get('POKEPI_TRAINER', 'PI-TEST')
         args.fresh_pid = False
         args.renew_offer = False
         destination = DATA_ROOT / 'private/received'
         destination.mkdir(mode=0o700, exist_ok=True)
-        args.offer_out = str(destination / (time.strftime('%Y%m%d-%H%M%S') + '.pa9'))
+        args.offer_out = os.environ.get('POKEPI_RECEIVED') or str(destination / (time.strftime('%Y%m%d-%H%M%S') + '.pa9'))
         self.game = SingleTrade(args, self.send, self.send_messages, lambda **kw: None)
         missing = set(upstream.za.reference.NAMES) - self.game.ref.keys()
         if missing:

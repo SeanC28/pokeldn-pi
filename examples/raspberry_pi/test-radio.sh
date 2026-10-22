@@ -28,6 +28,9 @@ ip link set wlan0 down
 modprobe -r brcmfmac_wcc
 modprobe -r brcmfmac
 echo "$testdir" > /sys/module/firmware_class/parameters/path
+# modprobe -r can drop these as unused deps (e.g. after a firmware-crash reload); insmod won't pull them back.
+modprobe cfg80211
+modprobe brcmutil
 insmod "$root/driver/brcmfmac.ko" pokepi_bssid_only="${POKEPI_BSSID_ONLY:-0}"
 sleep 5
 nmcli device set wlan0 managed no

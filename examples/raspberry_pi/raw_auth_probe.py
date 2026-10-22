@@ -15,6 +15,7 @@ import trio
 import ldn
 from ldn import wlan
 import pi_backend
+import raw_profile
 
 def session_summary(target):
     def tag(value):
@@ -30,7 +31,7 @@ async def observe(args):
     keys = ldn.load_keys(args.keys)
     for sweep in range(3):
         networks = await ldn.scan(keys, phyname=phy, channels=[1,6,11], dwell_time=1, protocols=[1])
-        matches = [session_summary(n) for n in networks if n.local_communication_id == 0x0100F43008C44000]
+        matches = [session_summary(n) for n in networks if raw_profile.matches(n)]
         print('SESSION_AFTER ' + json.dumps(dict(sweep=sweep, networks=matches)), flush=True)
 
 async def main(args):
@@ -103,15 +104,15 @@ async def run(args):
     for _ in range(6):
         networks = await ldn.scan(keys, phyname=phy, channels=[1,6,11],
                                   dwell_time=1, protocols=[1])
-        matches = [n for n in networks if n.local_communication_id == 0x0100F43008C44000]
+        matches = [n for n in networks if raw_profile.matches(n)]
         if matches:
             break
     if len(matches) != 1:
-        raise RuntimeError(f'Expected one Z-A host, found {len(matches)}')
+        raise RuntimeError(f'Expected one matching host, found {len(matches)}')
     target = matches[0]
     print('SESSION_BEFORE ' + json.dumps(session_summary(target)), flush=True)
     _, source = pi_backend.interface_info('wlan0', phy)
-    print(f'Z-A discovered on channel {target.channel}; testing direct authentication', flush=True)
+    print(f'Matching game discovered on channel {target.channel}; testing direct authentication', flush=True)
     async with wlan.create_factory() as factory:
         async with factory.create_monitor(phy, 'mon0', target.channel) as monitor:
             # A multi-channel scan can return an advertisement several seconds

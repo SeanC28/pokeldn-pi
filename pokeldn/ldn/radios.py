@@ -16,7 +16,7 @@ class Choice:
 
 def choices():
     from pokeldn import plugins
-    return ([Choice("ldnrs", "USB Wi-Fi (Windows, ldnrs)")] if sys.platform == "win32" else []) + plugins.radios()
+    return [Choice("raspberry-pi", "Raspberry Pi 4 (Ethernet / SSH)")] + ([Choice("ldnrs", "USB Wi-Fi (Windows, ldnrs)")] if sys.platform == "win32" else []) + plugins.radios()
 
 
 def radio(scheme):

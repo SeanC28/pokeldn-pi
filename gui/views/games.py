@@ -1049,12 +1049,22 @@ class SessionPanel:
             return
         radio = self.app.plugin_radio() if s.radio else None
         port = radio.scheme if radio else "" if s.radio else self.app.radio_port()
+        pi = s.radio == 'raspberry-pi'
         problems = [p for p in (
             "" if port else tr('games.the_radio_plugin_is_not_loaded_3f5a2c', 'The radio plugin is not loaded.') if s.radio else
             tr('games.no_board_found_plug_it_in_or_pick_one_on_the_board_page_39a182', 'No board found. Plug it in, or pick one on the Board page.'),
             "" if os.path.isfile(os.path.expanduser(s.keys)) else tr('games.choose_your_prod_keys_in_settings_eb3db2', 'Choose your prod.keys in Settings.'),
             command.missing_offer(tool, self.games.values), *command.problems(tool, self.games.values)) if p]
         self.log.clear()
+        if pi:
+            if tool.key not in ('za-join', 'sv-join', 'sv-gift-host'):
+                problems.append('Pi supports Z-A/SV Trade (Join) and SV Mystery Gift – Simulated. Other modes need a different radio.')
+            chosen = [v for f in tool.fields if f.kind == 'pokemon'
+                      for v in command.offers(command.value_of(f, self.games.values)) if v.get('file')]
+            if len(chosen) > 1:
+                problems.append('The experimental Pi adapter currently trades one Pokémon per run.')
+            if not os.path.isfile(os.path.expanduser(s.pi_connection)):
+                problems.append('Choose the Pi connection file in Settings.')
         if problems:
             for p in problems:
                 self.log.add(f'[app] {p}')
@@ -1070,6 +1080,8 @@ class SessionPanel:
             return
         stamp = time.strftime("%Y%m%d-%H%M%S")
         args = command.build(tool, self.games.values, self.games.extra, s, stamp)
+        if pi and tool.key == 'sv-gift-host':
+            self.log.add('[pi] This gift is delivered by joining your Switch. Start offline Link Trade with the matching code.')
         for folder in (SESSION / "captures", os.path.expanduser(s.received)):
             os.makedirs(folder, exist_ok=True)
         trace = f"captures/{tool.key}-{stamp}_esp32.trace" if s.board_trace else None
@@ -1083,7 +1095,8 @@ class SessionPanel:
         self.stopping = False
         self.app.process_label = tool.name
         self.running_tool = tool
-        self.app.process = runner.Process(["--run", tool.script, *args], str(SESSION),
+        launch = ["--run", "bin/pi_remote.py", "--tool", tool.key, *args] if pi else ["--run", tool.script, *args]
+        self.app.process = runner.Process(launch, str(SESSION),
                                           runner.base_env(s, port, trace), self._line, self._exited,
                                           popups=self.app.popups, label=tool.name)
         self.run = (self.app.process, stamp, self.games.game.key)

@@ -11,6 +11,7 @@ from pokeldn.app.paths import SESSION
 from pokeldn.app.sprites import CACHE
 from pokeldn.app.settings import switch_ids_valid
 from pokeldn.app import storage
+from pokeldn.ldn import radios
 from gui.views.widgets import PathField, open_folder
 from pokeldn.app.i18n import t as tr
 
@@ -135,6 +136,13 @@ class SettingsView:
                                  t.text(tr('settings.settings_74a883', 'Settings'), 22, weight=ft.FontWeight.W_600)], spacing=10),
                          padding=ft.Padding(4, 12, 0, 0)),
             section(tr('settings.your_setup_d0e2ca', 'Your setup')),
+            t.card('Raspberry Pi connection', ft.Column([
+                t.dropdown([('', 'ESP32 board'), *((r.scheme, r.label) for r in radios.choices())],
+                    s.radio,
+                    on_select=lambda e: self.save('radio', e.control.value or '')),
+                PathField(self.app.picker, home, s.pi_connection, 'file', ('json',),
+                    lambda value: self.save('pi_connection', value)).control,
+            ], spacing=8), 'Select the private connection profile for your prepared Pi. Pokémon are built on this PC; the Pi runs the wireless trade.'),
             t.card(tr('settings.app_language_b8352b', 'App language'), t.dropdown(
                 [("", tr('settings.english_ba118b', 'English')), *((p.id, p.name) for p in plugins.discover() if p.locale and not p.error)],
                 s.app_language, on_select=lambda e: self._language(e.control.value)),

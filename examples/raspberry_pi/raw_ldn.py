@@ -9,6 +9,7 @@ import socket
 import os
 import trio
 import ldn
+import raw_profile
 from ldn import wlan
 
 PASSPHRASE = b'BM7cXkadR9ugiXdHiurkiyhrQwcR3rMgCM5BF47dranKXWAGpGEA9z3ncXRnPjCX'
@@ -37,6 +38,11 @@ class RawStation:
         self.replay = {}
         self.on_data = None
         self.counts = dict(received=0, decrypted=0, bad_mic=0, replay=0)
+        # The nexmon firmware halts under injection bursts (SV sends ~50 frames in 45 ms),
+        # so serialize sends and keep a minimum gap between them.
+        self.tx_lock = trio.Lock()
+        self.tx_gap = float(os.environ.get('POKEPI_TX_GAP_MS', '5')) / 1000
+        self.tx_next = 0.0
 
     def address(self):
         return self.source
@@ -45,20 +51,23 @@ class RawStation:
         await self.send_payload(addr, 0x88b7, payload)
         print('Encrypted LDN authentication request submitted', flush=True)
 
-    async def send_payload(self, addr, protocol, payload):
+    async def send_payload(self, addr, protocol, payload, destination=None):
         if addr != self.target.address:
             raise ValueError('Probe can only transmit to selected host')
         frame = wlan.DataFrame(target=addr, source=self.source,
-            bssid=addr, tods=True,
+            bssid=destination or addr, tods=True,
             payload=wlan.SNAPHeader(protocol=protocol, payload=payload).encode())
-        self.pn += 1
-        if self.pn >= self.pn_end:
-            self.pn, self.pn_end = reserve_packet_numbers(self.key, self.source)
-        frame.encrypt(self.key, self.pn, 0)
-        packet = bytearray(frame.encode())
-        struct.pack_into('<H', packet, 22, (self.sequence & 4095) << 4)
-        self.sequence += 1
-        await self.monitor._socket.send(self.radiotap + packet)
+        async with self.tx_lock:
+            await trio.sleep_until(self.tx_next)
+            self.pn += 1
+            if self.pn >= self.pn_end:
+                self.pn, self.pn_end = reserve_packet_numbers(self.key, self.source)
+            frame.encrypt(self.key, self.pn, 0)
+            packet = bytearray(frame.encode())
+            struct.pack_into('<H', packet, 22, (self.sequence & 4095) << 4)
+            self.sequence += 1
+            await self.monitor._socket.send(self.radiotap + packet)
+            self.tx_next = trio.current_time() + self.tx_gap
 
     async def next_event(self):
         while True:
@@ -171,11 +180,12 @@ async def probe_data(interface, local_ip, host_ip):
         interface.on_data = None
 
 async def authenticate(monitor, target, source, radiotap, keys):
+    passphrase, app_version = raw_profile.credentials()
     derivation = ldn.KeyDerivation(keys, target.protocol)
-    key = derivation.derive_data_key(target.server_random, PASSPHRASE)
+    key = derivation.derive_data_key(target.server_random, passphrase)
     interface = RawStation(monitor, target, source, key, radiotap)
     param = ldn.ConnectNetworkParam(network=target, keys=keys,
-        password=PASSPHRASE, name=b'PI-TEST', app_version=6,
+        password=passphrase, name=os.environ.get('POKEPI_TRAINER', 'PI-TEST').encode(), app_version=app_version,
         client_random=secrets.token_bytes(16))
     network = ldn.STANetwork(interface, param, derivation)
     try:
@@ -193,7 +203,11 @@ async def authenticate(monitor, target, source, radiotap, keys):
                     if participant.connected and participant.mac_address == source:
                         seat_wait.deadline = float('inf')
                         print(f'LDN seat confirmed: index={index}, ip={participant.ip_address}, host={current.participants[0].ip_address}', flush=True)
-                        await probe_data(interface, participant.ip_address, current.participants[0].ip_address)
+                        if raw_profile.game() == 'sv':
+                            from raw_sv import trade
+                            await trade(interface, participant.ip_address, current.participants[0].ip_address)
+                        else:
+                            await probe_data(interface, participant.ip_address, current.participants[0].ip_address)
                         return
     finally:
         print(f'Encrypted receive counters: {interface.counts}', flush=True)
