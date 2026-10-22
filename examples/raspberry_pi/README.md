@@ -40,7 +40,18 @@ POKEPI_ROOT=~/pokemon-pi bash ~/pokemon-pi/repo/examples/raspberry_pi/setup-pi.s
 
 It creates `private/`, builds `runtime/` when missing, checks the firmware,
 the driver's kernel version, the keys and the system tools, and runs the offline
-checks. It does not build Nexmon or the driver.
+checks. It does not build Nexmon or the driver. It also checks that the kernel
+packages are held: the patched driver only loads on the kernel it was built for,
+so hold them once (`sudo apt-mark hold linux-image-rpi-v8 linux-image-rpi-2712
+linux-headers-rpi-v8 linux-headers-rpi-2712`) and `apt upgrade` keeps it.
+
+A Mystery Gift whose card gives the receiver's own trainer (Mew, Darkrai and
+others; the GUI turns on Made for the receiving player for them) is made again
+on the desktop before the run, for the save the newest received Scarlet/Violet
+Pokémon was caught in. The trade host remakes it mid-trade from the console's
+offer, but PKHeX runs only on the desktop and the Pi joins instead of hosting.
+With no earlier trade, or after switching saves, it goes with the trainer from
+Settings until one Pokémon from that save has been traded.
 
 Scarlet/Violet hosts its search session for only 3 to 4 s. If the Pi's join
 lands after that, the console hands over the host role (or stops answering

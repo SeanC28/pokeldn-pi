@@ -4,6 +4,7 @@ Each run first syncs this checkout's Pi-side code to the Pi (only when it change
 the Pi always runs exactly what this computer has. `--sync` does just that step.
 """
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -45,7 +46,8 @@ def connection(cfg):
     known_hosts = Path(cfg['known_hosts']).expanduser()
     opts = ['-i', str(Path(cfg['identity']).expanduser()), '-o', 'BatchMode=yes',
             '-o', 'StrictHostKeyChecking=yes', '-o', f'UserKnownHostsFile="{known_hosts}"',
-            '-o', 'ConnectTimeout=10']
+            # ERROR hides Raspberry Pi OS's first-boot sshd banner, printed on every call.
+            '-o', 'ConnectTimeout=10', '-o', 'LogLevel=ERROR']
     if cfg.get('host_key_alias'):
         opts += ['-o', 'HostKeyAlias='+cfg['host_key_alias']]
     def ssh(command, **kwargs):
@@ -103,6 +105,45 @@ def sync_checkout(cfg, ssh):
     return repo
 
 
+def save_trainer(received):
+    """-> (trainer, version, file name) of the Scarlet/Violet save the newest received Pokemon caught in
+    `received` came from, as pokeldn.receiver_gift.own_trainer reads one; None when none names a save."""
+    from pokeldn import gen9, receiver_gift
+    for path in sorted(received.glob('sv-*.pk9'), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            owner = receiver_gift.sv_owner(gen9.to_wire(path.read_bytes()))
+        except (ValueError, IndexError, KeyError):
+            continue
+        found = receiver_gift.own_trainer('sv', owner)
+        if found:
+            return (*found, path.name)
+    return None
+
+
+def gift_for_receiver(key, received, offer):
+    """-> the Mystery Gift `key` made for the receiving save, or `offer` (made under Settings' trainer).
+
+    pokeldn.receiver_gift remakes the gift mid-trade from the console's offer, but PKHeX runs only on
+    this computer and the Pi uses the joiner, so the gift is made here before the run, for the save the
+    last Scarlet/Violet trade came from (docs/gift_simulated.md, Made for the receiving player)."""
+    from pokeldn import pokemon, receiver_gift
+    found = save_trainer(received)
+    if not found:
+        print('[gift] no earlier Scarlet/Violet trade names your save, so the gift goes with your trainer '
+              'from Settings; trade once, then run it again to make it for your save', flush=True)
+        return offer
+    trainer, version, source = found
+    reply = pokemon.SERVICE.gift_event('sv', key, trainer, version=version, keep=False)
+    if reply['refused'] or not reply.get('your_ot'):
+        why = reply['refused'] or 'the card keeps its own trainer'
+        print(f"[gift] not made for {trainer['ot']}: {why}; the gift goes as made", flush=True)
+        return offer
+    print(f"[gift] {reply['title']} made for {trainer['ot']} (ID {trainer['tid']:05d}) on "
+          f"{receiver_gift.NAMES.get(version, version)}, the save {source} came from. If you trade from "
+          'another save, trade any Pokemon from it once first', flush=True)
+    return base64.b64decode(reply['data'])
+
+
 def main():
     if '--sync' in sys.argv[1:]:
         cfg = profile(os.environ['POKEPI_CONNECTION'])
@@ -116,14 +157,16 @@ def main():
     parser.add_argument('--code', default=None)
     parser.add_argument('--fresh-pid', action='store_true')
     parser.add_argument('--for-receiver', action='store_true')
+    parser.add_argument('--gift-event', action='append', default=[])
     args, _ = parser.parse_known_args()
     if args.tool not in ('za-join', 'sv-join', 'sv-gift-host') or len(args.trade_offer) != 1:
         raise ValueError('Pi supports one Pokémon per Z-A/SV join or SV simulated-gift run.')
-    if args.for_receiver:
-        raise ValueError('Pi does not yet remake gifts for the receiving trainer. Turn off that option.')
     game = args.tool.split('-')[0]
     from pokeldn import pokemon
-    data = pokemon.prepare_offer(game, Path(args.trade_offer[0]).read_bytes(), fresh=args.fresh_pid)
+    offer = Path(args.trade_offer[0]).read_bytes()
+    if args.for_receiver and game == 'sv' and args.gift_event:
+        offer = gift_for_receiver(args.gift_event[0], Path(args.offer_out).parent, offer)
+    data = pokemon.prepare_offer(game, offer, fresh=args.fresh_pid)
     cfg = profile(os.environ['POKEPI_CONNECTION'])
     token = uuid.uuid4().hex
     root = cfg['root'].rstrip('/')

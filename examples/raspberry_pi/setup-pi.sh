@@ -63,6 +63,20 @@ if [[ -f "$root/driver/brcmfmac.ko" ]]; then
 else
     bad 'driver/brcmfmac.ko'
 fi
+# A new kernel from apt upgrade leaves the patched driver unloadable until it is rebuilt.
+kernel_packages='linux-image-rpi-v8 linux-image-rpi-2712 linux-headers-rpi-v8 linux-headers-rpi-2712'
+held="$(apt-mark showhold)"
+unheld=''
+for package in $kernel_packages; do
+    if dpkg-query -W "$package" >/dev/null 2>&1 && ! grep -qx "$package" <<<"$held"; then
+        unheld+=" $package"
+    fi
+done
+if [[ -z "$unheld" ]]; then
+    ok 'kernel packages held'
+else
+    bad "kernel hold (run: sudo apt-mark hold$unheld)"
+fi
 
 echo 'private'
 if [[ -r "$root/private/prod.keys" ]]; then ok prod.keys; else bad "$root/private/prod.keys (copy your own)"; fi
