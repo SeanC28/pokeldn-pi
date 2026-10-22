@@ -455,7 +455,8 @@ def step_list(steps: list[str]) -> ft.Column:
 
 def image_src(data: bytes) -> bytes | str:
     """An image's bytes as an ft.Image src. iOS's WKWebView draws nothing for a bytes src and draws a
-    data URI (examples/ios/README.md); the decoder reads the format from the bytes, not the label."""
-    if os.environ.get("POKELDN_PLATFORM") == "ios":
+    data URI (examples/ios/README.md), and neither does Firefox showing the browser preview
+    (POKELDN_GUI_WEB); the decoder reads the format from the bytes, not the label."""
+    if os.environ.get("POKELDN_PLATFORM") == "ios" or os.environ.get("POKELDN_GUI_WEB"):
         return "data:image/png;base64," + base64.b64encode(data).decode()
     return data
