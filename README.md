@@ -1,3 +1,4 @@
+> **Experimental Raspberry Pi 4 fork:** Built-in Wi-Fi successfully traded in Legends Z-A with a stock Switch 2. No ESP32 was used. See [Pi setup, tested hardware, and limitations](examples/raspberry_pi/README.md). This is an advanced source integration; the upstream GUI does not yet expose it.
 <p align="center">
   <img src=".github/assets/banner.png" alt="pokeldn: ESP32-powered local wireless toolkit for Pokémon on Nintendo Switch" width="100%">
 </p>

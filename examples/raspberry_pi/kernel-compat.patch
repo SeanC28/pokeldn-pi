@@ -1,0 +1,72 @@
+diff --git a/bcmsdh.c b/bcmsdh.c
+index ac02244..aff7e0f 100644
+--- a/bcmsdh.c
++++ b/bcmsdh.c
+@@ -991,7 +991,7 @@ static const struct sdio_device_id brcmf_sdmmc_ids[] = {
+ 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4359),
+ 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_CYPRESS_4373),
+ 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_CYPRESS_43012),
+-	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_CYPRESS_43752),
++	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43752),
+ 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_CYPRESS_89359),
+ 	{ /* end: all zeroes */ }
+ };
+diff --git a/cfg80211.c b/cfg80211.c
+index 5e2b750..2e71d52 100644
+--- a/cfg80211.c
++++ b/cfg80211.c
+@@ -36,6 +36,11 @@
+ #include "bus.h"
+ #include "common.h"
+ 
++/* Experimental, default-off: limit firmware join search to supplied BSSID. */
++static bool pokepi_bssid_only;
++module_param(pokepi_bssid_only, bool, 0400);
++MODULE_PARM_DESC(pokepi_bssid_only, "Experimental explicit-BSSID hidden network join");
++
+ #define BRCMF_SCAN_IE_LEN_MAX		2048
+ 
+ #define WPA_OUI				"\x00\x50\xF2"	/* WPA OUI */
+@@ -765,7 +770,8 @@ static struct wireless_dev *brcmf_cfg80211_add_iface(struct wiphy *wiphy,
+ }
+ 
+ #ifdef NEXMON_MON_IF
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,13,0)
++/* Pi OS 6.12.109 backports the net_device monitor callback argument. */
++#if 0
+ static s32
+ brcmf_cfg80211_nexmon_set_channel(struct wiphy *wiphy,struct cfg80211_chan_def *chandef) {
+ #else
+@@ -2214,6 +2220,10 @@ brcmf_cfg80211_connect(struct wiphy *wiphy, struct net_device *ndev,
+ 		goto done;
+ 	}
+ 	ssid_len = min_t(u32, sme->ssid_len, IEEE80211_MAX_SSID_LEN);
++	if (pokepi_bssid_only && sme->bssid && is_valid_ether_addr(sme->bssid)) {
++		ssid_len = 0;
++		pr_info("POKEPI_JOIN explicit BSSID search enabled\n");
++	}
+ 	ext_join_params->ssid_le.SSID_len = cpu_to_le32(ssid_len);
+ 	memcpy(&ext_join_params->ssid_le.SSID, sme->ssid, ssid_len);
+ 	if (ssid_len < IEEE80211_MAX_SSID_LEN)
+@@ -6165,6 +6175,8 @@ brcmf_notify_connect_status(struct brcmf_if *ifp,
+ 	struct ieee80211_channel *chan;
+ 	s32 err = 0;
+ 
++	pr_info("POKEPI_CONN event=%u status=%u reason=%u auth=%d flags=%u\n", e->event_code, e->status, e->reason, e->auth_type, e->flags);
++
+ 	if ((e->event_code == BRCMF_E_DEAUTH) ||
+ 	    (e->event_code == BRCMF_E_DEAUTH_IND) ||
+ 	    (e->event_code == BRCMF_E_DISASSOC_IND) ||
+diff --git a/sdio.c b/sdio.c
+index 08f7197..bffd215 100644
+--- a/sdio.c
++++ b/sdio.c
+@@ -4299,7 +4299,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
+ 
+ 		switch (sdiod->func1->device) {
+ 		case SDIO_DEVICE_ID_BROADCOM_CYPRESS_4373:
+-		case SDIO_DEVICE_ID_BROADCOM_CYPRESS_43752:
++		case SDIO_DEVICE_ID_BROADCOM_43752:
+ 			brcmf_dbg(INFO, "set F2 watermark to 0x%x*4 bytes\n",
+ 				  CY_4373_F2_WATERMARK);
+ 			brcmf_sdiod_writeb(sdiod, SBSDIO_WATERMARK,
