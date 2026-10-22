@@ -1,4 +1,5 @@
 """Run upstream's Scarlet/Violet joiner on the Pi's encrypted Ethernet bridge."""
+from pi_paths import DATA_ROOT
 import os
 import struct
 import time

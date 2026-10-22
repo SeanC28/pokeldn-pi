@@ -10,7 +10,41 @@ The upstream game engine, Pokémon builder, and reference messages do the game w
 On October 21, 2026, a Raspberry Pi 4 Model B / 2 GB completed a Legends Z-A
 local trade with a stock Switch 2. The user confirmed Genesect arrived; the Pi
 saved the received Litwick. A separate 45-second session and clean departure
-also passed. This is one hardware/game combination, not general compatibility.
+also passed. On October 22, 2026, the same Pi completed Scarlet simulated-gift
+trades (shiny Koraidon, then shiny Miraidon from the GUI). These are single
+hardware/game combinations, not general compatibility.
+
+## Running from the GUI
+
+Pick **Raspberry Pi 4 (Ethernet / SSH)** as the radio in Settings and choose a
+Pi connection profile: a private JSON file with `host`, `user`, `identity` (SSH
+key), `known_hosts`, `root` (the data directory below), `sudo_password_file`,
+and optionally `host_key_alias`, `keys` and `repo` (default `<root>/repo`).
+Supported: Z-A Trade (Join), Scarlet/Violet Trade (Join) and Mystery Gift -
+Simulated, one Pokémon per run.
+
+Each run starts by syncing this checkout's `pokeldn/`, `bin/`,
+`examples/raspberry_pi/` and `vendor/LDN` to `repo` on the Pi, only when their
+content changed and never while a radio session is running. The Pi always runs
+the code on the desktop, uncommitted edits included. To sync without trading:
+
+```sh
+POKEPI_CONNECTION=/path/to/pi-connection.json python bin/pi_remote.py --sync
+```
+
+Then, once per Pi (and after kernel updates), as the login user on the Pi:
+
+```sh
+POKEPI_ROOT=~/pokemon-pi bash ~/pokemon-pi/repo/examples/raspberry_pi/setup-pi.sh
+```
+
+It creates `private/`, builds `runtime/` when missing, checks the firmware,
+the driver's kernel version, the keys and the system tools, and runs the offline
+checks. It does not build Nexmon or the driver.
+
+Scarlet/Violet hosts its search session for only 3 to 4 s. If the Pi's join
+lands after that, the console hands over the host role and starts searching
+again, and the Pi rescans and rejoins for up to `POKEPI_RETRY_SECONDS` (150).
 
 Tested OS: Raspberry Pi OS Bookworm Lite 64-bit, kernel
 `6.12.109+rpt-rpi-v8`; Nexmon BCM43455c0 firmware `7_45_206`; Python 3.13.16,
@@ -19,9 +53,9 @@ and this checkout's vendored LDN (0.0.17).
 
 ## Status and prerequisites
 
-This is an advanced source integration, not an installer or a GUI radio option.
-Only joining Legends Z-A was tested. Other games, Pi models, kernels, hosting,
-and repeated unattended trades have not been validated. Some received frames were
+This is an advanced source integration. Only joining Legends Z-A and Scarlet
+were tested. Violet, other games, Pi models, kernels, hosting, and repeated
+unattended trades have not been validated. Some received frames were
 rejected during testing; the current counter combines parse and integrity failures.
 
 Keep Ethernet connected. Radio setup temporarily unloads the normal Wi-Fi driver
@@ -44,8 +78,8 @@ Prepare a data directory outside the checkout, referred to as `$POKEPI_ROOT`:
   this repository's `vendor/LDN` installed. Run from a full source checkout.
 * `private/`: mode 0700, for persistent CCMP counters and received Pokémon files.
 
-Firmware/toolchain preparation still needs a reproducible setup script. The
-original successful build needed ARM compiler compatibility libraries. No firmware
+`setup-pi.sh` checks these, but the firmware and driver builds are still manual.
+The original successful build needed ARM compiler compatibility libraries. No firmware
 binary, compiled module, SDK, or Nintendo key is redistributed in this addition.
 
 Use your own keys file outside the checkout. Never commit it. Set absolute paths
