@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import trio
 from ldn import wlan
 from pokeldn.ldn import userspace_ip
+import raw_profile
 import raw_sv
 
 
@@ -53,9 +54,21 @@ async def check():
             await raw_sv.trade(radio, '169.254.1.2', '169.254.1.1')
         assert userspace_ip.lookup('pokepi-raw') is None
         assert radio.on_data is None
+
+        async def handed(*args):
+            return {'handed': True}
+        upstream.run_session = handed
+        try:
+            with trio.fail_after(3):
+                await raw_sv.trade(radio, '169.254.1.2', '169.254.1.1')
+        except raw_profile.HandedOff:
+            pass
+        else:
+            raise AssertionError('a host handoff before the trade must raise HandedOff')
+        assert userspace_ip.lookup('pokepi-raw') is None
     finally:
         upstream.run_session = original
-    print('SV bridge broadcast / receive / cleanup checks passed')
+    print('SV bridge broadcast / receive / cleanup / handoff checks passed')
 
 
 if __name__ == '__main__':

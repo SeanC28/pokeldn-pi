@@ -4,6 +4,7 @@ import struct
 import time
 import trio
 from ldn import wlan
+import raw_profile
 from pokeldn import sv
 from pokeldn.ldn.userspace_ip import userspace_port
 from pokeldn.sv import reference
@@ -63,11 +64,13 @@ async def trade(interface, local_ip, host_ip):
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(reader)
                 nursery.start_soon(writer)
-                await upstream.run_session(args, sv.session_keys(interface.target.ssid),
+                outcome = await upstream.run_session(args, sv.session_keys(interface.target.ssid),
                     host_ip, bytes(interface.target.address), local_ip,
                     bytes(interface.source), record)
                 nursery.cancel_scope.cancel()
         finally:
             interface.on_data = None
     if not completed:
+        if (outcome or {}).get('handed'):
+            raise raw_profile.HandedOff('Scarlet/Violet handed us the host role before the trade')
         raise RuntimeError('Scarlet/Violet session ended without a completed trade')

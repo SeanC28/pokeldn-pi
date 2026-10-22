@@ -2,6 +2,12 @@
 import os
 
 
+class HandedOff(RuntimeError):
+    """The console's member wait ran out and it handed us the host role before the trade.
+
+    It destroys that network and browses again, so the joiner should rescan and rejoin."""
+
+
 def game():
     value = os.environ.get('POKEPI_GAME', 'za')
     if value not in ('za', 'sv'):

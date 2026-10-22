@@ -6,6 +6,7 @@ bounded encrypted LDN/Pia session probe. No trade commands are sent.
 """
 from pi_paths import DATA_ROOT
 import argparse
+import os
 import pathlib
 import struct
 import secrets
@@ -96,17 +97,43 @@ async def associate(monitor, target, source, radiotap, keys=None, station_rates=
             await monitor._socket.send(radiotap + frame.encode())
         print('Probe identity disconnect submitted; delivery unconfirmed', flush=True)
 
+class NoHost(RuntimeError):
+    """No usable matching host right now; the console may still be browsing."""
+
 async def run(args):
     pi_backend.use()
     phy = pathlib.Path('/sys/class/net/wlan0/phy80211').resolve().name
     keys = ldn.load_keys(args.keys)
-    matches = []
-    for _ in range(6):
+    # A Scarlet/Violet console that hands us the host role destroys its network and hosts
+    # again after a few browses, so keep rescanning until this window closes. The trade
+    # itself still has to fit inside run_trade.sh's outer timeout.
+    retrying = raw_profile.game() == 'sv'
+    window_end = trio.current_time() + float(os.environ.get('POKEPI_RETRY_SECONDS', '150'))
+    skip = set()
+    attempt = 1
+    while True:
+        scan_until = window_end if attempt > 1 else trio.current_time() + 20
+        failure = None
+        try:
+            await join_once(args, phy, keys, skip, scan_until)
+            return
+        except* (raw_profile.HandedOff, NoHost) as group:
+            failure = group.exceptions[0]
+        if not retrying or trio.current_time() >= window_end:
+            raise failure
+        attempt += 1
+        print(f'RETRY {attempt}: {failure}; scanning for the console\'s next session', flush=True)
+
+async def join_once(args, phy, keys, skip, scan_until):
+    while True:
         networks = await ldn.scan(keys, phyname=phy, channels=[1,6,11],
                                   dwell_time=1, protocols=[1])
-        matches = [n for n in networks if raw_profile.matches(n)]
-        if matches:
+        matches = [n for n in networks if raw_profile.matches(n)
+                   and session_summary(n)['session'] not in skip]
+        if matches or trio.current_time() >= scan_until:
             break
+    if not matches:
+        raise NoHost('No matching host found')
     if len(matches) != 1:
         raise RuntimeError(f'Expected one matching host, found {len(matches)}')
     target = matches[0]
@@ -120,7 +147,7 @@ async def run(args):
             # before authentication, preserving channel selection from the scan.
             scanner = ldn.Scanner({1: ldn.KeyDerivation(keys, 1)}, monitor)
             previous = session_summary(target)
-            with trio.fail_after(3):
+            with trio.move_on_after(3) as refresh:
                 while True:
                     current = await scanner.receive()
                     if (current.address == target.address and
@@ -128,8 +155,15 @@ async def run(args):
                         current.channel == target.channel):
                         target = current
                         break
+            if refresh.cancelled_caught:
+                raise NoHost('The selected host stopped advertising')
             print('SESSION_REFRESH ' + json.dumps(dict(previous=previous,
                   current=session_summary(target))), flush=True)
+            session = session_summary(target)['session']
+            if session in skip:
+                raise NoHost('The host still advertises the session it handed over')
+            # Never rejoin a session whose host has handed it over.
+            skip.add(session)
             # Radiotap: RATE present, 1 Mbps (two 500-kbps units).
             radiotap = struct.pack('<BBHIB', 0, 0, 9, 4, 2)
             request = wlan.AuthenticationFrame(target=target.address, source=source,
