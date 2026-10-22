@@ -15,17 +15,31 @@ def game():
     return value
 
 
-def matches(network):
+def session_code(network):
+    """-> the link code a session of the selected game advertises, or None for any other network."""
     if game() == 'sv':
         from pokeldn import sv
-        return (network.local_communication_id in (sv.COMM_ID_SCARLET, sv.COMM_ID_VIOLET)
-                and network.scene_id == sv.SCENE_ID
-                and sv.link_code(network.application_data) == os.environ.get('POKEPI_CODE', ''))
+        if (network.local_communication_id in (sv.COMM_ID_SCARLET, sv.COMM_ID_VIOLET)
+                and network.scene_id == sv.SCENE_ID):
+            return sv.link_code(network.application_data)
+        return None
     from pokeldn import za
     if network.local_communication_id != 0x0100F43008C44000:
-        return False
-    code = os.environ.get('POKEPI_CODE')
-    return code is None or za.parse_advertise_data(bytes(network.application_data))['code'] == code
+        return None
+    try:
+        return za.parse_advertise_data(bytes(network.application_data))['code']
+    except (ValueError, IndexError, KeyError):
+        return None
+
+
+def wanted_code():
+    """-> the link code this run joins; None (Z-A only) joins any."""
+    return os.environ.get('POKEPI_CODE', '' if game() == 'sv' else None)
+
+
+def matches(network):
+    code = session_code(network)
+    return code is not None and wanted_code() in (None, code)
 
 
 def credentials():

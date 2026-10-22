@@ -141,8 +141,10 @@ def main():
     ssh(f'umask 077; cat > {q(remote_offer)}', input=data)
     env = {'POKEPI_ROOT': root, 'POKEPI_KEYS': cfg.get('keys', root+'/private/prod.keys'),
            'POKEPI_RECEIVED': remote_received, 'POKEPI_TRAINER': args.trainer_name,
-           'POKEPI_CODE': args.code if args.code is not None else ('00000000' if game == 'za' else ''),
            'POKEPI_GAME': game}
+    if args.code is not None:
+        # Without a code, Z-A joins any search (as bin/za_join.py) and SV a search with none.
+        env['POKEPI_CODE'] = args.code
     print('[pi] Start local Link Trade on the Switch with the same link code; leave it empty for no code.', flush=True)
     command = ('echo $$ > ' + q(pidfile) + '; exec env ' +
                ' '.join(k+'='+q(v) for k,v in env.items()) + ' bash ' +

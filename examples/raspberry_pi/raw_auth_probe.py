@@ -128,15 +128,25 @@ async def run(args):
         print(f'RETRY {attempt}: {failure}; scanning for the console\'s next session', flush=True)
 
 async def join_once(args, phy, keys, skip, scan_until):
+    other_codes = set()
     while True:
         networks = await ldn.scan(keys, phyname=phy, channels=[1,6,11],
                                   dwell_time=1, protocols=[1])
         matches = [n for n in networks if raw_profile.matches(n)
                    and session_summary(n)['session'] not in skip]
+        other_codes |= {code for n in networks if (code := raw_profile.session_code(n)) is not None
+                        and not raw_profile.matches(n)}
         if matches or trio.current_time() >= scan_until:
             break
     if not matches:
-        raise NoHost('No matching host found')
+        if other_codes:
+            # The usual cause: the console and the GUI's Link code field disagree.
+            def shown(code):
+                return repr(code) if code else 'no code'
+            seen = ', '.join(shown(c) for c in sorted(other_codes))
+            raise NoHost(f'No matching host found: the console is searching with {seen}, '
+                         f'but this run wants {shown(raw_profile.wanted_code())}; enter the same code on both')
+        raise NoHost('No matching host found (is the console searching in local Link Trade?)')
     if len(matches) != 1:
         raise RuntimeError(f'Expected one matching host, found {len(matches)}')
     target = matches[0]
