@@ -8,14 +8,29 @@ cp "$testdir/brcm/brcmfmac43455-sdio.bin" "$testdir/brcm/brcmfmac43455-sdio.rasp
 cat > "$testdir/restore.sh" <<'RESTORE'
 #!/bin/bash
 echo '' > /sys/module/firmware_class/parameters/path
-ip link set mon0 down 2>/dev/null || true
-iw dev mon0 del 2>/dev/null || true
-ip link set wlan0 down 2>/dev/null || true
-modprobe -r brcmfmac_wcc 2>/dev/null || true
-modprobe -r brcmfmac || true
+# After a firmware crash the driver's own recovery can hold the module for a moment
+# ("Module brcmfmac is in use"), and a plain modprobe would then keep the patched one.
+removed=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    ip link set mon0 down 2>/dev/null || true
+    iw dev mon0 del 2>/dev/null || true
+    ip link set wlan0 down 2>/dev/null || true
+    modprobe -r brcmfmac_wcc 2>/dev/null || true
+    if modprobe -r brcmfmac 2>/dev/null || ! grep -q '^brcmfmac ' /proc/modules; then
+        removed=1
+        break
+    fi
+    sleep 1
+done
+if (( ! removed )); then
+    echo 'restore: brcmfmac is still in use; the rollback timer will try again' >&2
+    exit 1
+fi
 modprobe brcmfmac
 sleep 3
 nmcli device set wlan0 managed yes || true
+systemctl stop pokepi-radio-rollback.timer 2>/dev/null || true
+echo 'restore: stock Wi-Fi driver and firmware back'
 RESTORE
 chmod 700 "$testdir/restore.sh"
 systemctl stop pokepi-radio-rollback.timer || true

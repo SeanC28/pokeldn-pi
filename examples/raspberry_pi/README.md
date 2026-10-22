@@ -53,10 +53,16 @@ offer, but PKHeX runs only on the desktop and the Pi joins instead of hosting.
 With no earlier trade, or after switching saves, it goes with the trainer from
 Settings until one Pokémon from that save has been traded.
 
-Scarlet/Violet hosts its search session for only 3 to 4 s. If the Pi's join
-lands after that, the console hands over the host role (or stops answering
-authentication or association) and starts searching again, and the Pi rescans
-and rejoins for up to `POKEPI_RETRY_SECONDS` (150).
+A join that fails before any trade begins is retried: the Pi rescans and
+rejoins for up to `POKEPI_RETRY_SECONDS` (150). That covers no matching session
+yet, no answer to authentication, association, the LDN handshake or the seat,
+and, for Scarlet/Violet, whose search hosts for only 3 to 4 s, the console
+handing over the host role. A link code mismatch is reported at once instead,
+naming the code the console searches with.
+
+If the patched firmware crashes, the radio restore retries unloading the driver
+while its crash recovery holds it, then reloads the stock driver; if it never
+frees, the 360-second rollback timer tries again.
 
 Tested OS: Raspberry Pi OS Bookworm Lite 64-bit, kernel
 `6.12.109+rpt-rpi-v8`; Nexmon BCM43455c0 firmware `7_45_206`; Python 3.13.16,

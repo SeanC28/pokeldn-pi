@@ -8,6 +8,14 @@ class HandedOff(RuntimeError):
     It destroys that network and browses again, so the joiner should rescan and rejoin."""
 
 
+class NoHost(RuntimeError):
+    """No usable matching host right now, before any trade began; the joiner may rescan and rejoin.
+
+    Raised when no session matches, and when the host stops answering authentication, association,
+    the LDN handshake or the seat: a Scarlet/Violet host's 3 to 4 s member wait can end between them,
+    taking the network with it, and a Z-A console refuses some seats while it settles."""
+
+
 def game():
     value = os.environ.get('POKEPI_GAME', 'za')
     if value not in ('za', 'sv'):

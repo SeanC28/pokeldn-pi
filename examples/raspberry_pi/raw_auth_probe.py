@@ -97,20 +97,15 @@ async def associate(monitor, target, source, radiotap, keys=None, station_rates=
             await monitor._socket.send(radiotap + frame.encode())
         print('Probe identity disconnect submitted; delivery unconfirmed', flush=True)
 
-class NoHost(RuntimeError):
-    """No usable matching host right now; the console may still be browsing.
-
-    Also raised when the host stops answering authentication or association: its
-    3 to 4 s member wait can end between those frames, taking the network with it."""
+NoHost = raw_profile.NoHost
 
 async def run(args):
     pi_backend.use()
     phy = pathlib.Path('/sys/class/net/wlan0/phy80211').resolve().name
     keys = ldn.load_keys(args.keys)
-    # A Scarlet/Violet console that hands us the host role destroys its network and hosts
-    # again after a few browses, so keep rescanning until this window closes. The trade
+    # A failure before the trade begins (NoHost; HandedOff for Scarlet/Violet, whose console then
+    # hosts again after a few browses) rescans and rejoins until this window closes. The trade
     # itself still has to fit inside run_trade.sh's outer timeout.
-    retrying = raw_profile.game() == 'sv'
     window_end = trio.current_time() + float(os.environ.get('POKEPI_RETRY_SECONDS', '150'))
     skip = set()
     attempt = 1
@@ -122,10 +117,11 @@ async def run(args):
             return
         except* (raw_profile.HandedOff, NoHost) as group:
             failure = group.exceptions[0]
-        if not retrying or trio.current_time() >= window_end:
+        if trio.current_time() >= window_end:
             raise failure
         attempt += 1
         print(f'RETRY {attempt}: {failure}; scanning for the console\'s next session', flush=True)
+        await trio.sleep(1)     # a failure that comes at once never spins the radio
 
 async def join_once(args, phy, keys, skip, scan_until):
     other_codes = set()
@@ -144,8 +140,9 @@ async def join_once(args, phy, keys, skip, scan_until):
             def shown(code):
                 return repr(code) if code else 'no code'
             seen = ', '.join(shown(c) for c in sorted(other_codes))
-            raise NoHost(f'No matching host found: the console is searching with {seen}, '
-                         f'but this run wants {shown(raw_profile.wanted_code())}; enter the same code on both')
+            # Not NoHost: rescanning cannot fix a code mismatch.
+            raise RuntimeError(f'No matching host found: the console is searching with {seen}, '
+                               f'but this run wants {shown(raw_profile.wanted_code())}; enter the same code on both')
         raise NoHost('No matching host found (is the console searching in local Link Trade?)')
     if len(matches) != 1:
         raise RuntimeError(f'Expected one matching host, found {len(matches)}')
@@ -175,8 +172,10 @@ async def join_once(args, phy, keys, skip, scan_until):
             session = session_summary(target)['session']
             if session in skip:
                 raise NoHost('The host still advertises the session it handed over')
-            # Never rejoin a session whose host has handed it over.
-            skip.add(session)
+            if raw_profile.game() == 'sv':
+                # Never rejoin a session whose host may have handed it over. Z-A has no handoff,
+                # so a session that refused one seat stays eligible.
+                skip.add(session)
             # Radiotap: RATE present, 1 Mbps (two 500-kbps units).
             radiotap = struct.pack('<BBHIB', 0, 0, 9, 4, 2)
             request = wlan.AuthenticationFrame(target=target.address, source=source,

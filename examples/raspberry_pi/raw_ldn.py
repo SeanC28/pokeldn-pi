@@ -189,11 +189,14 @@ async def authenticate(monitor, target, source, radiotap, keys):
         client_random=secrets.token_bytes(16))
     network = ldn.STANetwork(interface, param, derivation)
     try:
-        with trio.fail_after(8):
+        with trio.move_on_after(8) as handshake:
             await network._authenticate()
+        if handshake.cancelled_caught:
+            raise raw_profile.NoHost('No Nintendo LDN authentication response')
         print('Nintendo LDN authentication response verified successfully', flush=True)
         scanner = ldn.Scanner({target.protocol: derivation}, monitor)
-        with trio.fail_after(8) as seat_wait:
+        # Lifted once seated, so only a seat that never came ends here, before any trade.
+        with trio.move_on_after(8) as seat_wait:
             while True:
                 current = await scanner.receive()
                 if (current.address != target.address or current.ssid != target.ssid
@@ -209,5 +212,6 @@ async def authenticate(monitor, target, source, radiotap, keys):
                         else:
                             await probe_data(interface, participant.ip_address, current.participants[0].ip_address)
                         return
+        raise raw_profile.NoHost('The host never confirmed our seat')
     finally:
         print(f'Encrypted receive counters: {interface.counts}', flush=True)
